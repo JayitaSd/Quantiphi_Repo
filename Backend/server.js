@@ -1,28 +1,29 @@
 const express = require("express");
 const cors = require("cors");
 const fetch = require("node-fetch"); // v2 (CommonJS)
-const Database = require("better-sqlite3");
+const fs = require("fs");
+const path = require("path");
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const API_BASE = "https://api.frankfurter.app";
+const DB_FILE = path.join(__dirname, "data.json");
 
-// ---------- SQLite setup ----------
-const db = new Database("data.db");
-db.exec(`
-  CREATE TABLE IF NOT EXISTS favorites (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    base TEXT NOT NULL,
-    target TEXT NOT NULL
-  );
-  CREATE TABLE IF NOT EXISTS history_cache (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    base TEXT, target TEXT, amount REAL, converted REAL,
-    timestamp TEXT DEFAULT CURRENT_TIMESTAMP
-  );
-`);
+// ---------- Simple JSON-file "database" ----------
+function loadDB() {
+  if (!fs.existsSync(DB_FILE)) {
+    const initial = { favorites: [], history_cache: [], nextFavId: 1 };
+    fs.writeFileSync(DB_FILE, JSON.stringify(initial, null, 2));
+    return initial;
+  }
+  return JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
+}
+
+function saveDB(db) {
+  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
+}
 
 // ---------- Helpers ----------
 const fmtDate = (d) => d.toISOString().split("T")[0];
@@ -38,12 +39,16 @@ app.get("/api/rates", async (req, res) => {
     const converted = data.rates[target];
     const rate = converted / amount;
 
-    db.prepare(
-      "INSERT INTO history_cache (base, target, amount, converted) VALUES (?,?,?,?)"
-    ).run(base, target, Number(amount), converted);
+    const db = loadDB();
+    db.history_cache.push({
+      base, target, amount: Number(amount), converted,
+      timestamp: new Date().toISOString(),
+    });
+    saveDB(db);
 
     res.json({ base, target, amount: Number(amount), rate, converted });
   } catch (e) {
+    console.error(e);
     res.status(500).json({ error: "Failed to fetch rate" });
   }
 });
@@ -66,6 +71,7 @@ app.get("/api/history", async (req, res) => {
     }));
     res.json(history);
   } catch (e) {
+    console.error(e);
     res.status(500).json({ error: "Failed to fetch history" });
   }
 });
@@ -84,25 +90,30 @@ app.get("/api/travel", async (req, res) => {
     }));
     res.json({ base, amount: Number(amount), table });
   } catch (e) {
+    console.error(e);
     res.status(500).json({ error: "Failed to fetch travel comparison" });
   }
 });
 
 // Favorites CRUD
 app.get("/api/favorites", (req, res) => {
-  res.json(db.prepare("SELECT * FROM favorites").all());
+  const db = loadDB();
+  res.json(db.favorites);
 });
 
 app.post("/api/favorites", (req, res) => {
   const { base, target } = req.body;
-  const info = db
-    .prepare("INSERT INTO favorites (base, target) VALUES (?,?)")
-    .run(base, target);
-  res.json({ id: info.lastInsertRowid, base, target });
+  const db = loadDB();
+  const fav = { id: db.nextFavId++, base, target };
+  db.favorites.push(fav);
+  saveDB(db);
+  res.json(fav);
 });
 
 app.delete("/api/favorites/:id", (req, res) => {
-  db.prepare("DELETE FROM favorites WHERE id = ?").run(req.params.id);
+  const db = loadDB();
+  db.favorites = db.favorites.filter((f) => f.id !== Number(req.params.id));
+  saveDB(db);
   res.json({ deleted: true });
 });
 
