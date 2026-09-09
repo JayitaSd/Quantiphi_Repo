@@ -1,29 +1,28 @@
 const express = require("express");
 const cors = require("cors");
 const fetch = require("node-fetch"); // v2 (CommonJS)
-const fs = require("fs");
-const path = require("path");
+const { DatabaseSync } = require("node:sqlite"); // built into Node 22+/24, no install needed
 
 const app = express();
 app.use(cors());
 app.use(express.json());
 
 const API_BASE = "https://api.frankfurter.app";
-const DB_FILE = path.join(__dirname, "data.json");
 
-// ---------- Simple JSON-file "database" ----------
-function loadDB() {
-  if (!fs.existsSync(DB_FILE)) {
-    const initial = { favorites: [], history_cache: [], nextFavId: 1 };
-    fs.writeFileSync(DB_FILE, JSON.stringify(initial, null, 2));
-    return initial;
-  }
-  return JSON.parse(fs.readFileSync(DB_FILE, "utf-8"));
-}
-
-function saveDB(db) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2));
-}
+// ---------- SQLite setup (built-in, no native compile) ----------
+const db = new DatabaseSync("data.db");
+db.exec(`
+  CREATE TABLE IF NOT EXISTS favorites (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    base TEXT NOT NULL,
+    target TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS history_cache (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    base TEXT, target TEXT, amount REAL, converted REAL,
+    timestamp TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+`);
 
 // ---------- Helpers ----------
 const fmtDate = (d) => d.toISOString().split("T")[0];
@@ -39,12 +38,9 @@ app.get("/api/rates", async (req, res) => {
     const converted = data.rates[target];
     const rate = converted / amount;
 
-    const db = loadDB();
-    db.history_cache.push({
-      base, target, amount: Number(amount), converted,
-      timestamp: new Date().toISOString(),
-    });
-    saveDB(db);
+    db.prepare(
+      "INSERT INTO history_cache (base, target, amount, converted) VALUES (?,?,?,?)"
+    ).run(base, target, Number(amount), converted);
 
     res.json({ base, target, amount: Number(amount), rate, converted });
   } catch (e) {
@@ -97,23 +93,20 @@ app.get("/api/travel", async (req, res) => {
 
 // Favorites CRUD
 app.get("/api/favorites", (req, res) => {
-  const db = loadDB();
-  res.json(db.favorites);
+  const rows = db.prepare("SELECT * FROM favorites").all();
+  res.json(rows);
 });
 
 app.post("/api/favorites", (req, res) => {
   const { base, target } = req.body;
-  const db = loadDB();
-  const fav = { id: db.nextFavId++, base, target };
-  db.favorites.push(fav);
-  saveDB(db);
-  res.json(fav);
+  const info = db
+    .prepare("INSERT INTO favorites (base, target) VALUES (?,?)")
+    .run(base, target);
+  res.json({ id: Number(info.lastInsertRowid), base, target });
 });
 
 app.delete("/api/favorites/:id", (req, res) => {
-  const db = loadDB();
-  db.favorites = db.favorites.filter((f) => f.id !== Number(req.params.id));
-  saveDB(db);
+  db.prepare("DELETE FROM favorites WHERE id = ?").run(Number(req.params.id));
   res.json({ deleted: true });
 });
 
