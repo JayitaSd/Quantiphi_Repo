@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Currency Converter</title>
+<link rel="stylesheet" href="style.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+</head>
+<body>
+  <div class="container">
+    <h1>Currency Converter</h1>
+
+    <div class="card">
+      <div class="row">
+        <div class="field">
+          <label>Amount</label>
+          <input type="number" id="amount" value="100" min="0" />
+        </div>
+        <div class="field">
+          <label>From</label>
+          <select id="base"></select>
+        </div>
+        <span class="arrow">→</span>
+        <div class="field">
+          <label>To</label>
+          <select id="target"></select>
+        </div>
+      </div>
+      <div class="result" id="result">—</div>
+      <button id="favBtn">★ Add to Favorites</button>
+    </div>
+
+    <div class="card">
+      <h2>30-Day Trend</h2>
+      <canvas id="trendChart" height="120"></canvas>
+    </div>
+
+    <div class="card">
+      <h2>Favorites</h2>
+      <ul id="favList"></ul>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content: space-between;">
+        <h2>Travel Budgeting Mode</h2>
+        <label class="switch">
+          <input type="checkbox" id="travelToggle" />
+          <span>Toggle</span>
+        </label>
+      </div>
+      <div id="travelSection" class="hidden">
+        <table id="travelTable">
+          <thead><tr><th>Currency</th><th>Amount</th><th>Rate</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
